@@ -1,4 +1,3 @@
-# AI Apps Hub Dashboard
 
 Professional Streamlit homepage.
 
