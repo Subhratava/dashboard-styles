@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide",
 )
 
-DATA_FILE = Path("test.xlsx")
+DATA_FILE = Path("Asset Detail.xlsx")
 HEADER_ROW_INDEX = 1
 FIRST_DATA_ROW_INDEX = 3
 
@@ -38,6 +38,23 @@ def apply_theme() -> None:
             .block-container { padding-top: 1.5rem; }
             h1, h2, h3 { color: var(--green-700) !important; }
             p, label, .stCaption { color: var(--muted) !important; }
+
+            header[data-testid="stHeader"] {
+                background: linear-gradient(90deg, #14532d 0%, #15803d 45%, #16a34a 100%) !important;
+                border-bottom: 1px solid #166534;
+                box-shadow: 0 6px 16px rgba(20, 83, 45, 0.28);
+            }
+            header[data-testid="stHeader"] * {
+                color: #ecfdf5 !important;
+            }
+            button[kind="header"] {
+                background: rgba(236, 253, 245, 0.16) !important;
+                border: 1px solid rgba(236, 253, 245, 0.35) !important;
+                border-radius: 8px !important;
+            }
+            button[kind="header"]:hover {
+                background: rgba(236, 253, 245, 0.28) !important;
+            }
             .company-banner {
                 background: linear-gradient(90deg, #166534 0%, #16a34a 100%);
                 color: #ffffff;
@@ -127,6 +144,7 @@ def apply_theme() -> None:
                 border-radius: 10px;
                 padding: 0.5rem;
                 box-sizing: border-box;
+                overflow: hidden;
             }
             div[data-testid="stPlotlyChart"] > div,
             .stPlotlyChart > div {
@@ -160,6 +178,67 @@ def apply_theme() -> None:
                 font-weight: 700;
                 font-size: 1.05rem;
             }
+
+            .newsletter-hero {
+                background: linear-gradient(120deg, #ecfdf3 0%, #d1fae5 45%, #bbf7d0 100%);
+                border: 1px solid #a7f3d0;
+                border-radius: 14px;
+                padding: 1rem 1.1rem;
+                box-shadow: 0 6px 16px rgba(21, 128, 61, 0.08);
+            }
+            .newsletter-kicker {
+                margin: 0 0 0.25rem 0;
+                color: #166534 !important;
+                font-weight: 700;
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            .newsletter-headline {
+                margin: 0;
+                color: #14532d !important;
+                font-size: 1.65rem;
+                line-height: 1.2;
+            }
+            .newsletter-dek {
+                margin: 0.5rem 0 0 0;
+                color: #14532d !important;
+                line-height: 1.5;
+            }
+            .newsletter-section {
+                background: #ffffff;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 0.9rem 1rem;
+                margin: 0.8rem 0;
+            }
+            .newsletter-section h3 {
+                margin: 0 0 0.4rem 0;
+                color: var(--green-700) !important;
+                font-size: 1.05rem;
+            }
+            .newsletter-facts {
+                background: #f0fdf4;
+                border: 1px solid #bbf7d0;
+                border-radius: 12px;
+                padding: 0.8rem 0.9rem;
+                margin-top: 0.75rem;
+            }
+            .newsletter-facts p {
+                margin: 0.3rem 0;
+                color: #14532d !important;
+                font-size: 0.95rem;
+            }
+            .newsletter-link {
+                display: inline-block;
+                margin-top: 0.55rem;
+                background: #16a34a;
+                color: #ffffff !important;
+                text-decoration: none;
+                padding: 0.45rem 0.75rem;
+                border-radius: 8px;
+                font-weight: 600;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -172,7 +251,7 @@ def load_assets() -> pd.DataFrame:
 
     df = pd.read_excel(
         DATA_FILE,
-        sheet_name=0,
+        sheet_name="External Asset Details",
         header=HEADER_ROW_INDEX,
     )
     df = df.iloc[FIRST_DATA_ROW_INDEX - (HEADER_ROW_INDEX + 1) :].copy()
@@ -271,13 +350,17 @@ def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
         margin=dict(l=8, r=8, t=8, b=8),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
+        autosize = True,
         legend=dict(
             title=dict(text=title, font=dict(color="#000000")),
             font=dict(color="#000000"),
         ),
         font=dict(color="#000000"),
     )
-    fig.update_traces(textinfo="percent", textfont=dict(color="#000000"))
+    fig.update_traces(
+                        textinfo="percent",
+                        textfont=dict(color="#000000"),
+                        domain = dict(x=[0.0,1], y=[0.1,1]),)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -344,7 +427,7 @@ def render_home(df: pd.DataFrame) -> None:
             "L1 Offering",
             "L2 Offering",
             "L3 Offering",
-            "Primary Geo Owner",
+            "Key Features",
             "Developed By",
         ]
         if c in view_df.columns
@@ -370,50 +453,137 @@ def render_asset_detail(df: pd.DataFrame, asset_id: int) -> None:
         return
 
     row = df.iloc[asset_id]
-    st.title(row.get("Asset Name", "Asset Detail"))
-    st.caption("Product profile")
+    asset_name = str(row.get("Asset Name", "Asset Detail"))
+    st.title(asset_name)
+    st.caption("Newsletter profile")
 
-    if st.button("Back to homepage"):
+    if st.button("Back to homepage", type="secondary"):
         st.query_params.clear()
         st.rerun()
 
-    priority_fields = [
-        "AI Capabilities",
-        "Category",
-        "Type of Use",
-        "L1 Offering",
-        "L2 Offering",
-        "L3 Offering",
-        "Short Summary",
-        "Detailed Description",
-        "Key Features",
-        "Additional Information",
-        "Demo Link",
-        "Primary Geo Owner",
-        "Developed By",
-        "Funded/Sponsored By",
-    ]
-
-    left, right = st.columns(2)
-    for idx, field in enumerate(priority_fields):
+    def val(field: str) -> str:
         if field not in df.columns:
-            continue
-        value = row.get(field, "")
-        if pd.isna(value) or str(value).strip() == "":
-            continue
+            return ""
+        raw = row.get(field, "")
+        if pd.isna(raw):
+            return ""
+        return str(raw).strip()
 
-        target = left if idx % 2 == 0 else right
-        with target:
-            if field == "Demo Link":
-                st.markdown(
-                    f'<div class="detail-card"><h4>{html.escape(str(field))}</h4><p><a href="{html.escape(str(value))}" target="_blank">Open Demo</a></p></div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<div class="detail-card"><h4>{html.escape(str(field))}</h4><p>{html.escape(str(value))}</p></div>',
-                    unsafe_allow_html=True,
-                )
+    short_summary = val("Short Summary")
+    detailed = val("Detailed Description")
+    capabilities = val("AI Capabilities")
+    category = val("Category")
+    use_type = val("Type of Use")
+    l1 = val("L1 Offering")
+    l2 = val("L2 Offering")
+    l3 = val("L3 Offering")
+    features = val("Key Features")
+    additional = val("Additional Information")
+    geo = val("Primary Geo Owner")
+    developed_by = val("Developed By")
+    funded_by = val("Funded/Sponsored By")
+    demo_link = val("Demo Link")
+
+    hero_image = f"https://picsum.photos/1200/420?random={100 + asset_id}"
+    inline_image_1 = f"https://picsum.photos/1000/330?random={200 + asset_id}"
+    inline_image_2 = f"https://picsum.photos/1000/330?random={300 + asset_id}"
+
+    hero_left, hero_right = st.columns([1.45, 1], vertical_alignment="top")
+    with hero_left:
+        st.markdown(
+            f"""
+            <div class="newsletter-hero">
+                <p class="newsletter-kicker">AI Portfolio Newsletter</p>
+                <h2 class="newsletter-headline">{html.escape(asset_name)}</h2>
+                <p class="newsletter-dek">{html.escape(short_summary or "A featured enterprise AI product delivering measurable business value.")}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="newsletter-facts">
+                <p><b>Category:</b> {html.escape(category or "Not specified")}</p>
+                <p><b>Type of Use:</b> {html.escape(use_type or "Not specified")}</p>
+                <p><b>Primary Geo Owner:</b> {html.escape(geo or "Not specified")}</p>
+                <p><b>Developed By:</b> {html.escape(developed_by or "Not specified")}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with hero_right:
+        st.image(hero_image, caption="Featured newsletter visual", use_container_width=True)
+
+    st.image(inline_image_1, caption="Inside look", use_container_width=True)
+
+    main_col, side_col = st.columns([1.8, 1], vertical_alignment="top")
+    with main_col:
+        st.markdown(
+            f"""
+            <div class="newsletter-section">
+                <h3>Executive Summary</h3>
+                <p>{html.escape(detailed or short_summary or "Detailed description is not available yet.")}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="newsletter-section">
+                <h3>Capability Spotlight</h3>
+                <p><b>AI Capabilities:</b> {html.escape(capabilities or "Not specified")}</p>
+                <p><b>Offering Stack:</b> {html.escape(", ".join([x for x in [l1, l2, l3] if x]) or "Not specified")}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with side_col:
+        feature_items = [item.strip() for item in features.split(",") if item.strip()]
+        if feature_items:
+            feature_list = "".join(f"<li>{html.escape(item)}</li>" for item in feature_items[:7])
+            st.markdown(
+                f"""
+                <div class="newsletter-section">
+                    <h3>Key Features</h3>
+                    <ul>{feature_list}</ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        if additional:
+            st.markdown(
+                f"""
+                <div class="newsletter-section">
+                    <h3>Additional Notes</h3>
+                    <p>{html.escape(additional)}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        if funded_by:
+            st.markdown(
+                f"""
+                <div class="newsletter-section">
+                    <h3>Sponsorship</h3>
+                    <p>{html.escape(funded_by)}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.image(inline_image_2, caption="Innovation snapshot", use_container_width=True)
+
+    if demo_link:
+        st.markdown(
+            f"""
+            <div class="newsletter-section">
+                <h3>Try the Demo</h3>
+                <p>Explore the live experience and product flow.</p>
+                <a class="newsletter-link" href="{html.escape(demo_link)}" target="_blank">Open Demo Link</a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def main() -> None:
