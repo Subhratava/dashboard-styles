@@ -246,15 +246,18 @@ def apply_theme() -> None:
     )
 
 
-def load_assets() -> pd.DataFrame:
+def load_assets(sheet_name: str) -> pd.DataFrame:
     if not DATA_FILE.exists():
         return pd.DataFrame()
 
-    df = pd.read_excel(
-        DATA_FILE,
-        sheet_name="External Asset Details",
-        header=HEADER_ROW_INDEX,
-    )
+    try:
+        df = pd.read_excel(
+            DATA_FILE,
+            sheet_name=sheet_name,
+            header=HEADER_ROW_INDEX,
+        )
+    except Exception:
+        return pd.DataFrame()
     df = df.iloc[FIRST_DATA_ROW_INDEX - (HEADER_ROW_INDEX + 1) :].copy()
     df = df.dropna(how="all")
     df.columns = [str(c).strip() for c in df.columns]
@@ -613,7 +616,7 @@ def render_analytics(df: pd.DataFrame) -> None:
     draw_country_geoplot(df)
 
 
-def render_home(df: pd.DataFrame) -> None:
+def render_home(df: pd.DataFrame, search_query: str, access_filter: str) -> None:
     apply_theme()
     st.markdown(
         """
@@ -627,11 +630,10 @@ def render_home(df: pd.DataFrame) -> None:
     st.title("AI Apps Hub")
     st.caption("Centralized catalog of AI products and capabilities")
 
-    search = st.text_input("Search assets", placeholder="Type name, capability, or category...")
     view_df = df.copy()
-    if search.strip():
+    if search_query.strip():
         mask = view_df.astype(str).apply(
-            lambda col: col.str.contains(search, case=False, na=False)
+            lambda col: col.str.contains(search_query, case=False, na=False)
         ).any(axis=1)
         view_df = view_df[mask]
 
@@ -651,14 +653,6 @@ def render_home(df: pd.DataFrame) -> None:
 
     table_view_df = view_df.copy()
     if "Is X having access" in table_view_df.columns:
-        filter_col, _ = st.columns([1.1, 4])
-        with filter_col:
-            access_filter = st.radio(
-                "Access Toggle",
-                options=["All", "Yes", "No"],
-                horizontal=True,
-                key="table_access_filter",
-            )
         if access_filter != "All":
             access_mask = (
                 table_view_df["Is X having access"]
@@ -669,8 +663,6 @@ def render_home(df: pd.DataFrame) -> None:
                 .eq(access_filter.casefold())
             )
             table_view_df = table_view_df[access_mask]
-    else:
-        st.info("Data not available for access toggle filter.")
 
     st.markdown('<div class="section-title">Asset Directory</div>', unsafe_allow_html=True)
     if table_view_df.empty:
@@ -848,10 +840,30 @@ def render_asset_detail(df: pd.DataFrame, asset_id: int) -> None:
 
 
 def main() -> None:
-    df = load_assets()
+    st.sidebar.markdown("### Control Panel")
+    use_internal_sheet = st.sidebar.toggle("Use Internal Asset Details", value=False)
+    selected_sheet = "Internal Asset Details" if use_internal_sheet else "External Asset Details"
+    st.sidebar.caption(f"Active sheet: {selected_sheet}")
+
+    search_query = st.sidebar.text_input(
+        "Search assets",
+        placeholder="Type name, capability, or category...",
+    )
+    access_filter = st.sidebar.radio(
+        "Access Toggle",
+        options=["All", "Yes", "No"],
+        horizontal=True,
+        key="sidebar_access_filter",
+    )
+
+    df = load_assets(selected_sheet)
     if df.empty:
-        st.error("No data available. Please check Asset Detail.xlsx")
+        st.error(f"No data available for sheet '{selected_sheet}'. Please check Asset Detail.xlsx")
         return
+
+    if "Is X having access" not in df.columns and access_filter != "All":
+        st.sidebar.info("Data not available for access toggle filter in this sheet.")
+        access_filter = "All"
 
     asset_param = st.query_params.get("asset")
     if asset_param is not None:
@@ -860,7 +872,7 @@ def main() -> None:
         except ValueError:
             st.error("Invalid asset selected.")
     else:
-        render_home(df)
+        render_home(df, search_query=search_query, access_filter=access_filter)
 
 
 if __name__ == "__main__":
