@@ -330,7 +330,7 @@ def build_distribution(df: pd.DataFrame, column: str, split_csv: bool = False) -
     return counts
 
 
-def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
+def draw_pie_chart(data: pd.DataFrame, title: str, height: int = 300) -> None:
     if data.empty:
         st.info(f"Data not available for {title.lower()}.")
         return
@@ -353,7 +353,7 @@ def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
         ],
     )
     fig.update_layout(
-        height=300,
+        height=height,
         margin=dict(l=8, r=8, t=8, b=8),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
@@ -371,7 +371,7 @@ def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def draw_offering_stacked_bar(df: pd.DataFrame) -> None:
+def draw_offering_stacked_bar(df: pd.DataFrame, height: int = 300) -> None:
     offering_levels = [("L1 Offering", "L1"), ("L2 Offering", "L2"), ("L3 Offering", "L3")]
     records = []
     for column, level in offering_levels:
@@ -398,10 +398,15 @@ def draw_offering_stacked_bar(df: pd.DataFrame) -> None:
         .rename(columns={"size": "count"})
         .merge(display_labels, on="offering_key", how="left")
     )
+    # Keep legends manageable so the stacked chart remains visible.
+    top_offerings = set(counts.groupby("offering")["count"].sum().nlargest(10).index)
+    counts["offering"] = counts["offering"].where(counts["offering"].isin(top_offerings), "Others")
+    counts = counts.groupby(["level", "offering"], as_index=False)["count"].sum()
 
     level_order = {"L1": 0, "L2": 1, "L3": 2}
     counts["level_order"] = counts["level"].map(level_order)
     counts = counts.sort_values(["level_order", "count"], ascending=[True, False]).drop(columns=["level_order"])
+    legend_items = counts["offering"].nunique()
 
     fig = px.bar(
         counts,
@@ -413,18 +418,26 @@ def draw_offering_stacked_bar(df: pd.DataFrame) -> None:
         color_discrete_sequence=px.colors.sequential.Greens[2:] + px.colors.sequential.Tealgrn,
     )
     fig.update_layout(
-        height=300,
-        margin=dict(l=8, r=8, t=8, b=8),
+        height=height,
+        margin=dict(l=8, r=8, t=8, b=86 if legend_items > 5 else 56),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
         xaxis=dict(categoryorder="array", categoryarray=["L1", "L2", "L3"]),
-        legend=dict(font=dict(color="#000000"), title=dict(font=dict(color="#000000"))),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.22,
+            xanchor="left",
+            x=0,
+            font=dict(color="#000000"),
+            title=dict(font=dict(color="#000000")),
+        ),
         font=dict(color="#000000"),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def draw_access_status_chart(df: pd.DataFrame) -> None:
+def draw_access_status_chart(df: pd.DataFrame, height: int = 300) -> None:
     column = "Is X having access"
     if column not in df.columns:
         st.info("Data not available for access status chart.")
@@ -489,7 +502,7 @@ def draw_access_status_chart(df: pd.DataFrame) -> None:
         ]
     )
     fig.update_layout(
-        height=300,
+        height=height,
         margin=dict(l=8, r=8, t=8, b=8),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
@@ -502,7 +515,7 @@ def draw_access_status_chart(df: pd.DataFrame) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def draw_country_geoplot(df: pd.DataFrame) -> None:
+def draw_country_geoplot(df: pd.DataFrame, height: int = 420) -> None:
     column = "Country"
     if column not in df.columns:
         st.info("Data not available for country geoplot.")
@@ -587,7 +600,7 @@ def draw_country_geoplot(df: pd.DataFrame) -> None:
 
         fig.update_geos(showframe=False, showcoastlines=True, coastlinecolor="#95b89d")
         fig.update_layout(
-            height=420,
+            height=height,
             margin=dict(l=8, r=8, t=8, b=8),
             paper_bgcolor="#ffffff",
             font=dict(color="#000000"),
@@ -598,25 +611,27 @@ def draw_country_geoplot(df: pd.DataFrame) -> None:
         st.info("Data not available for country geoplot.")
 
 
-def render_analytics(df: pd.DataFrame) -> None:
+def render_analytics(df: pd.DataFrame, expanded: bool = False) -> None:
     st.markdown('<div class="section-title">Portfolio Analytics</div>', unsafe_allow_html=True)
+    primary_height = 460 if expanded else 300
+    geo_height = 680 if expanded else 420
     c1, c2, c3 = st.columns(3)
 
     with c1:
         st.caption("L1 / L2 / L3 Offering Stack")
-        draw_offering_stacked_bar(df)
+        draw_offering_stacked_bar(df, height=primary_height)
     with c2:
         st.caption("Access Status")
-        draw_access_status_chart(df)
+        draw_access_status_chart(df, height=primary_height)
     with c3:
         st.caption("Cross MF Usage Spread")
-        draw_pie_chart(build_distribution(df, "Cross MF Usage"), "Cross MF Usage")
+        draw_pie_chart(build_distribution(df, "Cross MF Usage"), "Cross MF Usage", height=primary_height)
 
     st.caption("Country Footprint")
-    draw_country_geoplot(df)
+    draw_country_geoplot(df, height=geo_height)
 
 
-def render_home(df: pd.DataFrame, search_query: str, access_filter: str) -> None:
+def render_home(df: pd.DataFrame, search_query: str, access_filter: str, expand_charts: bool) -> None:
     apply_theme()
     st.markdown(
         """
@@ -649,7 +664,7 @@ def render_home(df: pd.DataFrame, search_query: str, access_filter: str) -> None
     with m3:
         st.metric("Categories", view_df["Category"].nunique() if "Category" in view_df.columns else 0)
 
-    render_analytics(view_df)
+    render_analytics(view_df, expanded=expand_charts)
 
     table_view_df = view_df.copy()
     if "Is X having access" in table_view_df.columns:
@@ -855,6 +870,7 @@ def main() -> None:
         horizontal=True,
         key="sidebar_access_filter",
     )
+    expand_charts = st.sidebar.toggle("Expand charts", value=False)
 
     df = load_assets(selected_sheet)
     if df.empty:
@@ -872,7 +888,12 @@ def main() -> None:
         except ValueError:
             st.error("Invalid asset selected.")
     else:
-        render_home(df, search_query=search_query, access_filter=access_filter)
+        render_home(
+            df,
+            search_query=search_query,
+            access_filter=access_filter,
+            expand_charts=expand_charts,
+        )
 
 
 if __name__ == "__main__":
