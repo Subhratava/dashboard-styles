@@ -3,6 +3,7 @@ import streamlit as st
 from pathlib import Path
 import html
 import plotly.express as px
+import plotly.graph_objects as go
 
 st.set_page_config(
     page_title="AI Apps Hub",
@@ -285,6 +286,9 @@ def load_assets() -> pd.DataFrame:
                     "Primary Geo Owner": "US",
                     "Developed By": "AI Platform Team",
                     "Funded/Sponsored By": "Innovation Office",
+                    "Cross MF Usage":"IT",
+                    "Is X having access":"Yes",
+                    "Country" : "India",
                 }
             )
         if dummy_rows:
@@ -325,7 +329,7 @@ def build_distribution(df: pd.DataFrame, column: str, split_csv: bool = False) -
 
 def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
     if data.empty:
-        st.info(f"No data for {title.lower()}.")
+        st.info(f"Data not available for {title.lower()}.")
         return
 
     fig = px.pie(
@@ -346,7 +350,7 @@ def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
         ],
     )
     fig.update_layout(
-        height=280,
+        height=300,
         margin=dict(l=8, r=8, t=8, b=8),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
@@ -364,19 +368,249 @@ def draw_pie_chart(data: pd.DataFrame, title: str) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
+def draw_offering_stacked_bar(df: pd.DataFrame) -> None:
+    offering_levels = [("L1 Offering", "L1"), ("L2 Offering", "L2"), ("L3 Offering", "L3")]
+    records = []
+    for column, level in offering_levels:
+        if column not in df.columns:
+            continue
+        series = df[column].fillna("").astype(str).str.strip()
+        series = series[series != ""]
+        for value in series:
+            records.append({"level": level, "offering_raw": value, "offering_key": value.casefold()})
+
+    if not records:
+        st.info("Data not available for l1/l2/l3 offering chart.")
+        return
+
+    offer_df = pd.DataFrame(records)
+    display_labels = (
+        offer_df.groupby("offering_key")["offering_raw"]
+        .agg(lambda s: s.value_counts().idxmax())
+        .rename("offering")
+    )
+    counts = (
+        offer_df.groupby(["level", "offering_key"], as_index=False)
+        .size()
+        .rename(columns={"size": "count"})
+        .merge(display_labels, on="offering_key", how="left")
+    )
+
+    level_order = {"L1": 0, "L2": 1, "L3": 2}
+    counts["level_order"] = counts["level"].map(level_order)
+    counts = counts.sort_values(["level_order", "count"], ascending=[True, False]).drop(columns=["level_order"])
+
+    fig = px.bar(
+        counts,
+        x="level",
+        y="count",
+        color="offering",
+        barmode="stack",
+        labels={"level": "Offering Layer", "count": "Assets", "offering": "Offering"},
+        color_discrete_sequence=px.colors.sequential.Greens[2:] + px.colors.sequential.Tealgrn,
+    )
+    fig.update_layout(
+        height=300,
+        margin=dict(l=8, r=8, t=8, b=8),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        xaxis=dict(categoryorder="array", categoryarray=["L1", "L2", "L3"]),
+        legend=dict(font=dict(color="#000000"), title=dict(font=dict(color="#000000"))),
+        font=dict(color="#000000"),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def draw_access_status_chart(df: pd.DataFrame) -> None:
+    column = "Is X having access"
+    if column not in df.columns:
+        st.info("Data not available for access status chart.")
+        return
+
+    asset_series = (
+        df["Asset Name"].fillna("").astype(str).str.strip()
+        if "Asset Name" in df.columns
+        else pd.Series(["Unknown Asset"] * len(df), index=df.index)
+    )
+    raw = df[column].fillna("").astype(str).str.strip()
+    mapped = raw.str.casefold().map(
+        {
+            "yes": "Yes",
+            "y": "Yes",
+            "true": "Yes",
+            "1": "Yes",
+            "no": "No",
+            "n": "No",
+            "false": "No",
+            "0": "No",
+        }
+    )
+    status_df = pd.DataFrame(
+        {
+            "status": mapped.fillna(raw),
+            "asset_name": asset_series,
+        }
+    )
+    status_df["status"] = status_df["status"].fillna("").astype(str).str.strip()
+    status_df["asset_name"] = status_df["asset_name"].replace("", "Unknown Asset")
+    status_df = status_df[status_df["status"] != ""]
+    if status_df.empty:
+        st.info("Data not available for access status chart.")
+        return
+
+    counts = status_df.groupby("status", as_index=False).agg(
+        count=("status", "size"),
+        assets=("asset_name", lambda s: list(dict.fromkeys(s.tolist()))),
+    )
+    counts["asset_details"] = counts["assets"].apply(
+        lambda items: "<br>".join(items[:15]) + (f"<br>... +{len(items) - 15} more" if len(items) > 15 else "")
+    )
+    counts["sort_key"] = counts["status"].map({"Yes": 0, "No": 1}).fillna(2)
+    counts = counts.sort_values(["sort_key", "count"], ascending=[True, False]).drop(columns=["sort_key", "assets"])
+
+    colors = [{"Yes": "#16a34a", "No": "#166534"}.get(s, "#22c55e") for s in counts["status"]]
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=counts["status"],
+                y=counts["count"],
+                marker_color=colors,
+                text=counts["count"],
+                customdata=counts["asset_details"],
+                hovertemplate=(
+                    "Is X having access: %{x}<br>"
+                    "Assets: %{y}<br>"
+                    "Asset Names:<br>%{customdata}<extra></extra>"
+                ),
+            )
+        ]
+    )
+    fig.update_layout(
+        height=300,
+        margin=dict(l=8, r=8, t=8, b=8),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+        xaxis_title="Is X having access",
+        yaxis_title="Assets",
+        font=dict(color="#000000"),
+    )
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def draw_country_geoplot(df: pd.DataFrame) -> None:
+    column = "Country"
+    if column not in df.columns:
+        st.info("Data not available for country geoplot.")
+        return
+
+    country_df = pd.DataFrame(
+        {
+            "country_raw": df[column].fillna("").astype(str).str.strip(),
+            "asset_name": (
+                df["Asset Name"].fillna("").astype(str).str.strip()
+                if "Asset Name" in df.columns
+                else pd.Series(["Unknown Asset"] * len(df), index=df.index)
+            ),
+        }
+    )
+    country_df["asset_name"] = country_df["asset_name"].replace("", "Unknown Asset")
+    country_df = country_df[country_df["country_raw"] != ""]
+    if country_df.empty:
+        st.info("Data not available for country geoplot.")
+        return
+
+    try:
+        country_df["is_iso3"] = country_df["country_raw"].str.fullmatch(r"[A-Za-z]{3}", na=False)
+        country_df["country_key"] = country_df["country_raw"].str.casefold().str.strip()
+        country_df["country_display"] = country_df["country_raw"]
+
+        summary = country_df.groupby(["country_key", "is_iso3"], as_index=False).agg(
+            country_display=("country_display", lambda s: s.value_counts().idxmax()),
+            count=("country_raw", "size"),
+            assets=("asset_name", lambda s: list(dict.fromkeys(s.tolist()))),
+        )
+        summary["asset_details"] = summary["assets"].apply(
+            lambda items: "<br>".join(items[:12]) + (f"<br>... +{len(items) - 12} more" if len(items) > 12 else "")
+        )
+
+        iso_df = summary[summary["is_iso3"]].copy()
+        name_df = summary[~summary["is_iso3"]].copy()
+        iso_df["location"] = iso_df["country_display"].str.upper().str.strip()
+        name_df["location"] = name_df["country_display"].str.strip()
+
+        if iso_df.empty and name_df.empty:
+            st.info("Data not available for country geoplot.")
+            return
+
+        fig = go.Figure()
+        if not iso_df.empty:
+            fig.add_trace(
+                go.Choropleth(
+                    locations=iso_df["location"],
+                    z=iso_df["count"],
+                    text=iso_df["country_display"],
+                    customdata=iso_df["asset_details"],
+                    locationmode="ISO-3",
+                    coloraxis="coloraxis",
+                    marker_line_color="#f0fff4",
+                    marker_line_width=0.5,
+                    hovertemplate=(
+                        "Country: %{text}<br>"
+                        "Assets: %{z}<br>"
+                        "Asset Names:<br>%{customdata}<extra></extra>"
+                    ),
+                )
+            )
+        if not name_df.empty:
+            fig.add_trace(
+                go.Choropleth(
+                    locations=name_df["location"],
+                    z=name_df["count"],
+                    text=name_df["country_display"],
+                    customdata=name_df["asset_details"],
+                    locationmode="country names",
+                    coloraxis="coloraxis",
+                    marker_line_color="#f0fff4",
+                    marker_line_width=0.5,
+                    hovertemplate=(
+                        "Country: %{text}<br>"
+                        "Assets: %{z}<br>"
+                        "Asset Names:<br>%{customdata}<extra></extra>"
+                    ),
+                )
+            )
+
+        fig.update_geos(showframe=False, showcoastlines=True, coastlinecolor="#95b89d")
+        fig.update_layout(
+            height=420,
+            margin=dict(l=8, r=8, t=8, b=8),
+            paper_bgcolor="#ffffff",
+            font=dict(color="#000000"),
+            coloraxis=dict(colorscale="Greens", colorbar=dict(title="Assets")),
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception:
+        st.info("Data not available for country geoplot.")
+
+
 def render_analytics(df: pd.DataFrame) -> None:
     st.markdown('<div class="section-title">Portfolio Analytics</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        st.caption("AI Capability Mix")
-        draw_pie_chart(build_distribution(df, "AI Capabilities", split_csv=True), "Capability")
+        st.caption("L1 / L2 / L3 Offering Stack")
+        draw_offering_stacked_bar(df)
     with c2:
-        st.caption("Type of Use")
-        draw_pie_chart(build_distribution(df, "Type of Use"), "Type of Use")
+        st.caption("Access Status")
+        draw_access_status_chart(df)
     with c3:
-        st.caption("Category Spread")
-        draw_pie_chart(build_distribution(df, "Category"), "Category")
+        st.caption("Cross MF Usage Spread")
+        draw_pie_chart(build_distribution(df, "Cross MF Usage"), "Cross MF Usage")
+
+    st.caption("Country Footprint")
+    draw_country_geoplot(df)
 
 
 def render_home(df: pd.DataFrame) -> None:
@@ -415,7 +649,34 @@ def render_home(df: pd.DataFrame) -> None:
 
     render_analytics(view_df)
 
+    table_view_df = view_df.copy()
+    if "Is X having access" in table_view_df.columns:
+        filter_col, _ = st.columns([1.1, 4])
+        with filter_col:
+            access_filter = st.radio(
+                "Access Toggle",
+                options=["All", "Yes", "No"],
+                horizontal=True,
+                key="table_access_filter",
+            )
+        if access_filter != "All":
+            access_mask = (
+                table_view_df["Is X having access"]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .str.casefold()
+                .eq(access_filter.casefold())
+            )
+            table_view_df = table_view_df[access_mask]
+    else:
+        st.info("Data not available for access toggle filter.")
+
     st.markdown('<div class="section-title">Asset Directory</div>', unsafe_allow_html=True)
+    if table_view_df.empty:
+        st.info("Data not available for the selected access toggle.")
+        return
+
     ordered_cols = [
         c
         for c in [
@@ -430,11 +691,11 @@ def render_home(df: pd.DataFrame) -> None:
             "Key Features",
             "Developed By",
         ]
-        if c in view_df.columns
+        if c in table_view_df.columns
     ]
 
-    table_df = view_df[ordered_cols].copy().fillna("")
-    table_df["Asset Name"] = view_df.apply(
+    table_df = table_view_df[ordered_cols].copy().fillna("")
+    table_df["Asset Name"] = table_view_df.apply(
         lambda row: f'<a href="{asset_row_link(row)}">{row["Asset Name"]}</a>', axis=1
     )
 
