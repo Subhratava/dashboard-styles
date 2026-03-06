@@ -307,9 +307,10 @@ def load_assets(sheet_name: str) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def asset_row_link(row: pd.Series) -> str:
+def asset_row_link(row: pd.Series, sheet_name: str) -> str:
     asset_id = int(row.name)
-    return f"/?asset={asset_id}"
+    sheet_key = "internal" if str(sheet_name).strip().casefold().startswith("internal") else "external"
+    return f"/?sheet={sheet_key}&asset={asset_id}"
 
 
 def build_distribution(df: pd.DataFrame, column: str, split_csv: bool = False) -> pd.DataFrame:
@@ -631,7 +632,13 @@ def render_analytics(df: pd.DataFrame, expanded: bool = False) -> None:
     draw_country_geoplot(df, height=geo_height)
 
 
-def render_home(df: pd.DataFrame, search_query: str, access_filter: str, expand_charts: bool) -> None:
+def render_home(
+    df: pd.DataFrame,
+    search_query: str,
+    access_filter: str,
+    expand_charts: bool,
+    selected_sheet: str,
+) -> None:
     apply_theme()
     st.markdown(
         """
@@ -703,7 +710,7 @@ def render_home(df: pd.DataFrame, search_query: str, access_filter: str, expand_
 
     table_df = table_view_df[ordered_cols].copy().fillna("")
     table_df["Asset Name"] = table_view_df.apply(
-        lambda row: f'<a href="{asset_row_link(row)}">{row["Asset Name"]}</a>', axis=1
+        lambda row: f'<a href="{asset_row_link(row, selected_sheet)}">{row["Asset Name"]}</a>', axis=1
     )
 
     st.markdown(
@@ -856,7 +863,9 @@ def render_asset_detail(df: pd.DataFrame, asset_id: int) -> None:
 
 def main() -> None:
     st.sidebar.markdown("### Control Panel")
-    use_internal_sheet = st.sidebar.toggle("Use Internal Asset Details", value=False)
+    sheet_param = str(st.query_params.get("sheet", "")).strip().casefold()
+    default_internal = sheet_param == "internal"
+    use_internal_sheet = st.sidebar.toggle("Use Internal Asset Details", value=default_internal)
     selected_sheet = "Internal Asset Details" if use_internal_sheet else "External Asset Details"
     st.sidebar.caption(f"Active sheet: {selected_sheet}")
 
@@ -893,6 +902,7 @@ def main() -> None:
             search_query=search_query,
             access_filter=access_filter,
             expand_charts=expand_charts,
+            selected_sheet=selected_sheet,
         )
 
 
