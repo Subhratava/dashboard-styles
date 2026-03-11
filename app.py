@@ -5,6 +5,10 @@ import html
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+try:
+    from streamlit_plotly_events import plotly_events
+except ImportError:
+    plotly_events = None
 
 st.set_page_config(
     page_title="AI Apps Hub",
@@ -59,27 +63,6 @@ def apply_theme() -> None:
             }
             button[kind="header"]:hover {
                 background: rgba(236, 253, 245, 0.28) !important;
-            }
-            .company-banner {
-                background: linear-gradient(90deg, #1C3D26 0%, #1C3D26 100%);
-                color: #ffffff;
-                width: 100dvw;
-                margin-left: calc(50% - 50dvw);
-                border-radius: 0;
-                padding: 18px clamp(1rem, 4vw, 2.5rem);
-                margin-bottom: 1rem;
-                box-shadow: 0 6px 18px rgba(21, 128, 61, 0.2);
-            }
-            .company-banner h2 {
-                color: #ffffff !important;
-                margin: 0;
-                font-size: 1.5rem;
-                letter-spacing: 0.3px;
-            }
-            .company-banner p {
-                color: #FFFFFF !important;
-                margin: 0.35rem 0 0 0;
-                font-size: 0.95rem;
             }
 
             div[data-testid="stMetric"] {
@@ -164,6 +147,19 @@ def apply_theme() -> None:
             .stPlotlyChart > div {
                 border-radius: 8px;
                 overflow: hidden;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                background: #ffffff;
+                border: 2px solid #1f2937 !important;
+                border-radius: 10px !important;
+                padding: 0.5rem !important;
+                box-sizing: border-box;
+            }
+            iframe[title="streamlit_plotly_events.streamlit_plotly_events"] {
+                border: 2px solid #1f2937 !important;
+                border-radius: 10px !important;
+                box-sizing: border-box;
+                background: #ffffff;
             }
 
             .detail-card {
@@ -259,6 +255,33 @@ def apply_theme() -> None:
         unsafe_allow_html=True,
     )
 
+    st.markdown(f"""
+    <style>
+        .company-banner {{
+                background: linear-gradient(90deg, #1C3D26 0%, #1C3D26 100%);
+                color: #ffffff;
+                width: 100dvw;
+                margin-left: calc(50% - 50dvw);
+                border-radius: 0;
+                padding: 18px clamp(1rem, 4vw, 2.5rem);
+                margin-bottom: 1rem;
+                box-shadow: 0 6px 18px rgba(21, 128, 61, 0.2);
+        }}
+        .company-banner h2 {{
+            color: #ffffff !important;
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 0.3px;
+        }}
+        .company-banner p {{
+            color: #FFFFFF !important;
+            margin: 0.35rem 0 0 0;
+            font-size: 0.95rem;
+        }}
+    </style>       
+        """, unsafe_allow_html=True)
+    
+
 
 def load_assets(sheet_name: str) -> pd.DataFrame:
     if not DATA_FILE.exists():
@@ -280,36 +303,6 @@ def load_assets(sheet_name: str) -> pd.DataFrame:
         df.insert(0, "Sr. No.", range(1, len(df) + 1))
     if "Asset Name" not in df.columns:
         df["Asset Name"] = [f"AI Asset {i}" for i in range(1, len(df) + 1)]
-
-    if len(df) < 6:
-        start = len(df) + 1
-        dummy_rows = []
-        # for i in range(start, 7):
-        #     dummy_rows.append(
-        #         {
-        #             "Sr. No.": i,
-        #             "Asset Name": f"Demo Assistant {i}",
-        #             "AI Capabilities": "GenAI, RAG",
-        #             "Category": "Productivity",
-        #             "Type of Use": "Internal",
-        #             "L1 Offering": "Conversational AI",
-        #             "L2 Offering": "Knowledge Assistant",
-        #             "L3 Offering": "Search + Summarize",
-        #             "Short Summary": "AI assistant for business workflows.",
-        #             "Detailed Description": "Provides document Q&A, summaries, and workflow automation.",
-        #             "Key Features": "Role-based access, citation support, analytics dashboard",
-        #             "Additional Information": "Pilot-ready solution",
-        #             "Demo Link": "https://example.com",
-        #             "Primary Geo Owner": "US",
-        #             "Developed By": "AI Platform Team",
-        #             "Funded/Sponsored By": "Innovation Office",
-        #             "Cross MF Usage":"IT",
-        #             "Is X having access":"Yes",
-        #             "Country" : "India",
-        #         }
-        #     )
-        if dummy_rows:
-            df = pd.concat([df, pd.DataFrame(dummy_rows)], ignore_index=True)
 
     df["Asset Name"] = df["Asset Name"].fillna("").astype(str).str.strip()
     df["Sr. No."] = (
@@ -386,73 +379,190 @@ def draw_count_plot(data: pd.DataFrame, title: str, height: int = 300) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def draw_offering_stacked_bar(df: pd.DataFrame, height: int = 300) -> None:
-    offering_levels = [("L1 Offering", "L1"), ("L2 Offering", "L2"), ("L3 Offering", "L3")]
-    records = []
-    for column, level in offering_levels:
-        if column not in df.columns:
-            continue
-        series = df[column].fillna("").astype(str).str.strip()
-        series = series[series != ""]
-        for value in series:
-            records.append({"level": level, "offering_raw": value, "offering_key": value.casefold()})
-
-    if not records:
+def draw_offering_stacked_bar(df: pd.DataFrame, height: int = 600) -> set[object]:
+    required_cols = ["L1 Offering", "L2 Offering", "L3 Offering"]
+    available_cols = [col for col in required_cols if col in df.columns]
+    if "L1 Offering" not in available_cols:
         st.info("Data not available for l1/l2/l3 offering chart.")
-        return
+        return set()
 
-    offer_df = pd.DataFrame(records)
-    display_labels = (
-        offer_df.groupby("offering_key")["offering_raw"]
-        .agg(lambda s: s.value_counts().idxmax())
-        .rename("offering")
+    def clean_value(raw: object) -> str | None:
+        if pd.isna(raw):
+            return None
+        value = str(raw).strip()
+        if not value:
+            return None
+        if value.casefold() == "all":
+            return "ALL"
+        return value
+
+    hierarchy_df = df[available_cols].copy()
+    hierarchy_df["_row_id"] = df.index
+    for col in available_cols:
+        hierarchy_df[col] = hierarchy_df[col].apply(clean_value)
+
+    asset_col = (
+        df["Asset Name"].fillna("").astype(str).str.strip()
+        if "Asset Name" in df.columns
+        else pd.Series(["Unknown Asset"] * len(df), index=df.index)
     )
-    counts = (
-        offer_df.groupby(["level", "offering_key"], as_index=False)
-        .size()
-        .rename(columns={"size": "count"})
-        .merge(display_labels, on="offering_key", how="left")
+    hierarchy_df["Asset Name"] = asset_col
+    hierarchy_df = hierarchy_df[hierarchy_df["Asset Name"] != ""]
+
+    hierarchy_df = hierarchy_df[hierarchy_df["L1 Offering"].notna()].copy()
+    if hierarchy_df.empty:
+        st.info("Data not available for l1/l2/l3 offering chart.")
+        return set()
+
+    # Keep hierarchy valid: L3 should only exist under an L2 node.
+    if "L2 Offering" in hierarchy_df.columns and "L3 Offering" in hierarchy_df.columns:
+        hierarchy_df.loc[hierarchy_df["L2 Offering"].isna(), "L3 Offering"] = None
+
+    for col in required_cols:
+        if col not in hierarchy_df.columns:
+            hierarchy_df[col] = None
+
+    node_counts: dict[str, int] = {}
+    node_row_ids: dict[str, set[object]] = {}
+    node_assets: dict[str, set[str]] = {}
+    node_labels: dict[str, str] = {}
+    node_parents: dict[str, str] = {}
+    node_levels: dict[str, int] = {}
+
+    def upsert_node(
+        node_id: str,
+        label: str,
+        parent_id: str,
+        level: int,
+        row_id: object,
+        asset_name: str,
+    ) -> None:
+        node_labels[node_id] = label
+        node_parents[node_id] = parent_id
+        node_levels[node_id] = level
+        node_counts[node_id] = node_counts.get(node_id, 0) + 1
+        if node_id not in node_row_ids:
+            node_row_ids[node_id] = set()
+        node_row_ids[node_id].add(row_id)
+        if node_id not in node_assets:
+            node_assets[node_id] = set()
+        node_assets[node_id].add(asset_name)
+
+    for row in hierarchy_df.to_dict("records"):
+        l1 = row.get("L1 Offering")
+        l2 = row.get("L2 Offering")
+        l3 = row.get("L3 Offering")
+        row_id = row.get("_row_id")
+        asset_name = row.get("Asset Name", "")
+
+        l1_id = f"L1::{l1}"
+        upsert_node(l1_id, l1, "", 1, row_id, asset_name)
+
+        if l2:
+            l2_id = f"L2::{l1}::{l2}"
+            upsert_node(l2_id, l2, l1_id, 2, row_id, asset_name)
+            if l3:
+                l3_id = f"L3::{l1}::{l2}::{l3}"
+                upsert_node(l3_id, l3, l2_id, 3, row_id, asset_name)
+
+    if not node_counts:
+        st.info("Data not available for l1/l2/l3 offering chart.")
+        return set()
+
+    def format_asset_list(names: set[str], max_items: int = 20) -> str:
+        ordered = sorted(n for n in names if n)
+        if not ordered:
+            return "Not specified"
+        shown = ordered[:max_items]
+        text = "<br>".join(shown)
+        remaining = len(ordered) - len(shown)
+        if remaining > 0:
+            text = f"{text}<br>... (+{remaining} more)"
+        return text
+
+    sorted_ids = sorted(
+        node_counts.keys(),
+        key=lambda nid: (node_levels[nid], node_labels[nid].casefold(), -node_counts[nid]),
     )
-    # Keep legends manageable so the stacked chart remains visible.
-    top_offerings = set(counts.groupby("offering")["count"].sum().nlargest(10).index)
-    counts["offering"] = counts["offering"].where(counts["offering"].isin(top_offerings), "Others")
-    counts = counts.groupby(["level", "offering"], as_index=False)["count"].sum()
 
-    level_order = {"L1": 0, "L2": 1, "L3": 2}
-    counts["level_order"] = counts["level"].map(level_order)
-    counts = counts.sort_values(["level_order", "count"], ascending=[True, False]).drop(columns=["level_order"])
-    legend_items = counts["offering"].nunique()
+    chart_df = pd.DataFrame(
+        {
+            "id": sorted_ids,
+            "label": [node_labels[nid] for nid in sorted_ids],
+            "parent": [node_parents[nid] for nid in sorted_ids],
+            "count": [node_counts[nid] for nid in sorted_ids],
+            "node_id": sorted_ids,
+            "assets_html": [format_asset_list(node_assets[nid]) for nid in sorted_ids],
+        }
+    )
+    chart_df["hover_text"] = chart_df.apply(
+        lambda row: f"<b>{row['label']}</b><br>Assets: {int(row['count'])}<br>Asset Names:<br>{row['assets_html']}",
+        axis=1,
+    )
 
-    fig = px.bar(
-        counts,
-        x="level",
-        y="count",
-        color="offering",
-        barmode="stack",
-        labels={"level": "Offering Layer", "count": "Assets", "offering": "Offering"},
-        color_discrete_sequence=px.colors.sequential.Greens[2:] + px.colors.sequential.Tealgrn,
+    fig = go.Figure(
+        go.Sunburst(
+            ids=chart_df["id"],
+            labels=chart_df["label"],
+            parents=chart_df["parent"],
+            values=chart_df["count"],
+            customdata=chart_df[["node_id"]],
+            hovertext=chart_df["hover_text"],
+            branchvalues="total",
+            marker=dict(
+                colors=chart_df["count"],
+                colorscale=[
+                    [0.0, "#86BC25"],
+                    [0.5, "#26890D"],
+                    [1.0, "#1C3D26"],
+                ],
+            ),
+            insidetextorientation="radial",
+            hovertemplate="%{hovertext}<extra></extra>",
+        )
     )
     fig.update_layout(
         height=height,
-        margin=dict(l=4, r=170, t=4, b=12),
+        margin=dict(l=8, r=8, t=8, b=8),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
-        xaxis=dict(categoryorder="array", categoryarray=["L1", "L2", "L3"]),
-        bargap=0.08,
-        legend=dict(
-            orientation="v",
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=1.0,
-            itemwidth=90,
-            traceorder="normal",
-            font=dict(color="#000000", size=11),
-            title=dict(text="Offering", side="top center", font=dict(color="#000000")),
-        ),
         font=dict(color="#000000"),
+        coloraxis_showscale=False,
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    selected_row_ids: set[object] = set(st.session_state.get("offering_selected_row_ids", []))
+    if plotly_events is None:
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.info("Install `streamlit-plotly-events` to enable click-to-filter on this chart.")
+        return selected_row_ids
+
+    with st.container(border=True):
+        clicked_points = plotly_events(
+            fig,
+            click_event=True,
+            select_event=False,
+            hover_event=False,
+            override_height=height,
+            override_width="100%",
+            key="offering_drilldown_chart_events",
+        )
+    if clicked_points:
+        clicked_point = clicked_points[-1]
+        node_id = None
+        custom = clicked_point.get("customdata")
+        if isinstance(custom, list) and custom:
+            node_id = custom[0]
+        elif isinstance(custom, str):
+            node_id = custom
+        if not node_id:
+            point_number = clicked_point.get("pointNumber")
+            if isinstance(point_number, int) and 0 <= point_number < len(sorted_ids):
+                node_id = sorted_ids[point_number]
+        if node_id in node_row_ids:
+            selected_row_ids = set(node_row_ids[node_id])
+            st.session_state["offering_selected_row_ids"] = list(selected_row_ids)
+            st.session_state["offering_selected_label"] = node_labels.get(node_id, "")
+
+    return selected_row_ids
 
 
 def draw_access_status_chart(df: pd.DataFrame, height: int = 300) -> None:
@@ -662,19 +772,18 @@ def draw_country_geoplot(df: pd.DataFrame, height: int = 420) -> None:
         st.info("Data not available for country geoplot.")
 
 
-def render_analytics(df: pd.DataFrame, expanded: bool = False) -> None:
+def render_analytics(df: pd.DataFrame, expanded: bool = False) -> set[object]:
     st.markdown('<div class="section-title">Portfolio Analytics</div>', unsafe_allow_html=True)
     primary_height = 460 if expanded else 300
+    sunburst_height = 560 if expanded else 380
     geo_height = 680 if expanded else 420
-    c1, c2, c3 = st.columns(3)
+    selected_row_ids: set[object] = set()
 
+    c1, c2 = st.columns(2)
     with c1:
-        st.caption("L1 / L2 / L3 Offering Stack")
-        draw_offering_stacked_bar(df, height=primary_height)
-    with c2:
         st.caption("Access Status")
         draw_access_status_chart(df, height=primary_height)
-    with c3:
+    with c2:
         st.caption("Cross MF Usage Spread")
         draw_count_plot(
             build_distribution(df, "Cross MF Usage", split_csv=True),
@@ -682,8 +791,12 @@ def render_analytics(df: pd.DataFrame, expanded: bool = False) -> None:
             height=primary_height,
         )
 
+    st.caption("L1 / L2 / L3 Offering Drilldown")
+    selected_row_ids = draw_offering_stacked_bar(df, height=sunburst_height)
+
     st.caption("Country Footprint")
     draw_country_geoplot(df, height=geo_height)
+    return selected_row_ids
 
 
 def render_home(
@@ -734,29 +847,7 @@ def render_home(
     if view_df.empty:
         st.info("No assets found for the current filter.")
         return
-
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        st.metric("Total Assets", total_assets_count)
-    with m2:
-        st.metric("Internal Assets", internal_assets_count)
-    with m3:
-        st.metric("External Assets", external_assets_count)
-
-    k1, k2, k3 = st.columns(3)
-    with k1:
-        ai_enable_count = 0
-        if "AI Capabilities" in view_df.columns:
-            ai_enable_series = view_df["AI Capabilities"].fillna("").astype(str).str.strip().str.casefold()
-            ai_enable_count = int(ai_enable_series.eq("yes").sum())
-        st.metric("AI Enabled", ai_enable_count)
-    with k2:
-        st.metric("Showing", len(view_df))
-    with k3:
-        st.metric("Categories (Type of Assets)", view_df["Category"].nunique() if "Category" in view_df.columns else 0)
-
-    render_analytics(view_df, expanded=expand_charts)
-
+    
     table_view_df = view_df.copy()
     if "Is X having access" in table_view_df.columns:
         if access_filter != "All":
@@ -775,6 +866,51 @@ def render_home(
         st.info("Data not available for the selected access toggle.")
         return
 
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("Total Assets", total_assets_count)
+    with m2:
+        st.metric("Internal Assets", internal_assets_count)
+    with m3:
+        st.metric("External Assets", external_assets_count)
+
+    kpi_container = st.container()
+
+    selected_row_ids = render_analytics(view_df, expanded=expand_charts)
+    if selected_row_ids:
+        table_view_df = table_view_df[table_view_df.index.isin(selected_row_ids)]
+        selected_label = str(st.session_state.get("offering_selected_label", "")).strip()
+        if selected_label:
+            st.caption(f"Offering chart filter active ({selected_label}): {len(table_view_df)} asset(s) selected.")
+        else:
+            st.caption(f"Offering chart filter active: {len(table_view_df)} asset(s) selected.")
+        if st.button("Clear offering filter", key="clear_offering_filter"):
+            st.session_state.pop("offering_selected_row_ids", None)
+            st.session_state.pop("offering_selected_label", None)
+            st.session_state.pop("offering_drilldown_chart_events", None)
+            st.rerun()
+
+    kpi_df = view_df[view_df.index.isin(selected_row_ids)] if selected_row_ids else view_df
+    with kpi_container:
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            ai_enable_count = 0
+            if "AI Capabilities" in kpi_df.columns:
+                ai_enable_series = kpi_df["AI Capabilities"].fillna("").astype(str).str.strip().str.casefold()
+                ai_enable_count = int(ai_enable_series.eq("yes").sum())
+            st.metric("AI Enabled", ai_enable_count)
+        with k2:
+            st.metric("Showing", len(table_view_df))
+        with k3:
+            icc_utilization_count = 0
+            if {"AI Capabilities", "Is X having access"}.issubset(kpi_df.columns):
+                ai_caps = kpi_df["AI Capabilities"].fillna("").astype(str).str.strip().str.casefold()
+                access_vals = kpi_df["Is X having access"].fillna("").astype(str).str.strip().str.casefold()
+                icc_utilization_count = int((ai_caps.eq("yes") & access_vals.eq("yes")).sum())
+            st.metric("AI Enabled asset (ICC Utilization) ", icc_utilization_count)
+
+    table_base_df = table_view_df.loc[:, ~table_view_df.columns.duplicated()].copy()
+
     ordered_cols = [
         c
         for c in [
@@ -789,13 +925,18 @@ def render_home(
             "Key Features",
             "Developed By",
         ]
-        if c in table_view_df.columns
+        if c in table_base_df.columns
     ]
 
-    table_df = table_view_df[ordered_cols].copy().fillna("")
-    table_df["Asset Name"] = table_view_df.apply(
-        lambda row: f'<a href="{asset_row_link(row, selected_sheet)}">{row["Asset Name"]}</a>', axis=1
-    )
+    table_df = table_base_df[ordered_cols].copy().fillna("")
+    if "Asset Name" in table_base_df.columns:
+        asset_name_series = table_base_df["Asset Name"]
+        if isinstance(asset_name_series, pd.DataFrame):
+            asset_name_series = asset_name_series.iloc[:, 0]
+        table_df["Asset Name"] = [
+            f'<a href="{asset_row_link(pd.Series(name=idx), selected_sheet)}">{name}</a>'
+            for idx, name in asset_name_series.fillna("").astype(str).items()
+        ]
 
     table_classes = "asset-table"
     if len(table_df) > 5:
