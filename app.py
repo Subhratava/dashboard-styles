@@ -775,24 +775,26 @@ def draw_country_geoplot(df: pd.DataFrame, height: int = 420) -> None:
 def render_analytics(df: pd.DataFrame, expanded: bool = False) -> set[object]:
     st.markdown('<div class="section-title">Portfolio Analytics</div>', unsafe_allow_html=True)
     primary_height = 460 if expanded else 300
-    sunburst_height = 560 if expanded else 380
+    sunburst_height = 560 if expanded else 400
     geo_height = 680 if expanded else 420
-    selected_row_ids: set[object] = set()
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.caption("Access Status")
-        draw_access_status_chart(df, height=primary_height)
-    with c2:
-        st.caption("Cross MF Usage Spread")
-        draw_count_plot(
-            build_distribution(df, "Cross MF Usage", split_csv=True),
-            "Cross MF Usage",
-            height=primary_height,
-        )
+    top_charts = st.container()
 
     st.caption("L1 / L2 / L3 Offering Drilldown")
     selected_row_ids = draw_offering_stacked_bar(df, height=sunburst_height)
+    analytics_df = df[df.index.isin(selected_row_ids)] if selected_row_ids else df
+
+    with top_charts:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.caption("Access Status")
+            draw_access_status_chart(analytics_df, height=primary_height)
+        with c2:
+            st.caption("Cross MF Usage Spread")
+            draw_count_plot(
+                build_distribution(analytics_df, "Cross MF Usage", split_csv=True),
+                "Cross MF Usage",
+                height=primary_height,
+            )
 
     st.caption("Country Footprint")
     draw_country_geoplot(df, height=geo_height)
